@@ -624,7 +624,14 @@ const popupProps = {
   setShowLoginModal={setShowLoginModal}
   setShowJoinModal={setShowJoinModal}
 />
-      <Footer />
+      <Footer
+  onOpenLogin={() => setShowLoginModal(true)}
+  onOpenJoin={(type) => {
+    setJoinModalAccountType(type);
+    setShowJoinModal(true);
+  }}
+  isLoggedIn={Boolean(token)}
+/>
 
     </div>
 

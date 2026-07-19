@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import HomeSection from "./HomeSection";
 import ExplorePage from "../pages/ExplorePage";
 import FavoritesPage from "../pages/FavoritesPage";
@@ -9,8 +10,17 @@ import PaymentsPage from "../pages/PaymentsPage";
 import ContributorPage from "../pages/ContributorPage";
 import MyUploadsPage from "../pages/MyUploadsPage";
 import AdminPage from "../pages/AdminPage";
+import CompanyPage from "./CompanyPage";
 
 export default function AppRoutes(props) {
+  const location = useLocation();
+  const pathname = location.pathname;
+
+  if (pathname === "/about") return <CompanyPage slug="about" />;
+  if (pathname === "/pricing") return <CompanyPage slug="pricing" />;
+  if (pathname === "/careers") return <CompanyPage slug="careers" />;
+  if (pathname === "/contact") return <CompanyPage slug="contact" />;
+
   return (
     <>
       {/* HOME */}

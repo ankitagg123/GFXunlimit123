@@ -1,8 +1,43 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
+
 function FeaturedImages({
   featuredImages,
   darkMode,
   fetchSingleImage,
 }) {
+  const [liveFeaturedImages, setLiveFeaturedImages] = useState([]);
+
+  useEffect(() => {
+    const loadFeaturedImages = async () => {
+      try {
+        const res = await axios.get(`${process.env.REACT_APP_API_BASE_URL || "http://localhost:5000"}/images`);
+        const assets = Array.isArray(res.data?.images) ? res.data.images : [];
+        const sortedAssets = [...assets].sort((a, b) => (b.downloads || 0) - (a.downloads || 0)).slice(0, 4);
+        setLiveFeaturedImages(sortedAssets);
+      } catch (err) {
+        console.error("Failed to load featured images", err);
+      }
+    };
+
+    loadFeaturedImages();
+
+    const handleRefresh = () => {
+      window.setTimeout(() => {
+        loadFeaturedImages();
+      }, 250);
+    };
+
+    window.addEventListener("asset-updated", handleRefresh);
+    window.addEventListener("asset-refresh", handleRefresh);
+    window.addEventListener("home-assets-refresh", handleRefresh);
+
+    return () => {
+      window.removeEventListener("asset-updated", handleRefresh);
+      window.removeEventListener("asset-refresh", handleRefresh);
+      window.removeEventListener("home-assets-refresh", handleRefresh);
+    };
+  }, []);
   return (
     <>
       <h2
@@ -23,7 +58,7 @@ function FeaturedImages({
     marginBottom: "30px",
   }}
 >
-  {(featuredImages || []).map((image) => (
+  {(liveFeaturedImages.length > 0 ? liveFeaturedImages : featuredImages || []).map((image) => (
     <div
       key={`featured-${image.id}-${image.filename}`}
       onClick={() => fetchSingleImage(image.id)}

@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
+
 function ImageGallery(props) {
 
   const {
@@ -11,6 +14,22 @@ setSelectedCategory,
 selectedCollection,
 setSelectedCollection,
   } = props;
+
+  const [collections, setCollections] = useState([]);
+
+  useEffect(() => {
+    const loadCollections = async () => {
+      try {
+        const res = await axios.get(`${process.env.REACT_APP_API_BASE_URL || "http://localhost:5000"}/collections`);
+        const nextCollections = Array.isArray(res.data) ? res.data.map((item) => item.name).filter(Boolean) : [];
+        setCollections(nextCollections);
+      } catch (err) {
+        console.error("Failed to load collections", err);
+      }
+    };
+
+    loadCollections();
+  }, []);
 
   return (
     <>
@@ -83,8 +102,7 @@ setSelectedCollection,
   {[
     "All",
     "Photos",
-    "Vectors",
-    "Psd's",
+    "PSD",
     "Videos",
     "Templates",
   ].map((cat) => (
@@ -130,14 +148,7 @@ setSelectedCollection,
   }}
 >
 
-  {[
-    "All",
-    "Nature",
-    "Travel",
-    "Business",
-    "Technology",
-    "People",
-  ].map((collection) => (
+  {["All", ...collections].map((collection) => (
 
     <button
       key={collection}

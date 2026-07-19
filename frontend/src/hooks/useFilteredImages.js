@@ -1,4 +1,4 @@
-function matchesCategoryFilter(image, selectedCategory) {
+export function matchesCategoryFilter(image, selectedCategory) {
   const categoryValue = (selectedCategory || "").toLowerCase();
   const text = `${image.category || ""} ${image.collection || ""} ${image.title || ""} ${image.keywords || ""}`.toLowerCase();
 
@@ -7,7 +7,11 @@ function matchesCategoryFilter(image, selectedCategory) {
   }
 
   if (categoryValue === "photos") {
-    return text.includes("photo") || text.includes("photography");
+    return (
+      text.includes("photo") ||
+      text.includes("photography") ||
+      (image.category || "").toLowerCase() === "photos"
+    );
   }
 
   if (categoryValue === "vectors") {

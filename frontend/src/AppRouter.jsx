@@ -7,6 +7,7 @@ import DownloadsPage from "./pages/DownloadsPage";
 import UploadPage from "./pages/UploadPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProfilePage from "./pages/ProfilePage";
+import CompanyPage from "./components/CompanyPage";
 
 export default function AppRouter(props) {
   return (
@@ -120,6 +121,11 @@ export default function AppRouter(props) {
           />
         }
       />
+
+      <Route path="/about" element={<CompanyPage slug="about" />} />
+      <Route path="/pricing" element={<CompanyPage slug="pricing" />} />
+      <Route path="/careers" element={<CompanyPage slug="careers" />} />
+      <Route path="/contact" element={<CompanyPage slug="contact" />} />
     </Routes>
   );
 }

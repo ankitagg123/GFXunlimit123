@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import "./AppHeader.css";
 import { toast } from "react-toastify";
 
@@ -70,7 +71,51 @@ export default function AppHeader({
 
   const [showCreditsMenu, setShowCreditsMenu] = useState(false);
   const [creditsMessage, setCreditsMessage] = useState("");
+  const [branding, setBranding] = useState({});
   const creditsDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
+
+    const loadBranding = async () => {
+      try {
+        const res = await axios.get(`${apiBaseUrl}/branding`);
+        setBranding(res.data || {});
+      } catch (err) {
+        console.error("Failed to load branding", err);
+      }
+    };
+
+    loadBranding();
+    const handleBrandingUpdated = () => loadBranding();
+    window.addEventListener("branding-updated", handleBrandingUpdated);
+
+    return () => {
+      window.removeEventListener("branding-updated", handleBrandingUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!branding?.favicon) {
+      const existingIcon = document.querySelector('link[rel="icon"]');
+      if (existingIcon) {
+        existingIcon.remove();
+      }
+      return;
+    }
+
+    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
+    const faviconUrl = `${apiBaseUrl}${branding.favicon}`;
+    let iconLink = document.querySelector('link[rel="icon"]');
+
+    if (!iconLink) {
+      iconLink = document.createElement("link");
+      iconLink.rel = "icon";
+      document.head.appendChild(iconLink);
+    }
+
+    iconLink.href = faviconUrl;
+  }, [branding]);
 
   useEffect(() => {
     if (!showCreditsMenu) return;
@@ -145,10 +190,18 @@ export default function AppHeader({
     }
   }}
 >
-  <span className="logo-red">GFX</span>
-  <span className="logo-dark">
-    unlimit
-  </span>
+  {branding?.logo ? (
+    <img
+      src={`${process.env.REACT_APP_API_BASE_URL || "http://localhost:5000"}${branding.logo}`}
+      alt="Website logo"
+      className="brand-logo-image"
+    />
+  ) : (
+    <>
+      <span className="logo-red">GFX</span>
+      <span className="logo-dark">unlimit</span>
+    </>
+  )}
 </div>
 
           {isCustomerUser && (
@@ -269,30 +322,32 @@ export default function AppHeader({
 
           {isAdminUser && (
             <div className="header-nav">
-              <button
-                className="nav-link-btn"
-                onClick={() => handleNavigate("/admin?status=pending", "admin")}
-              >
-                Pending
-              </button>
-              <button
-                className="nav-link-btn"
-                onClick={() => handleNavigate("/admin?status=reviewed", "admin")}
-              >
-                Reviewed
-              </button>
-              <button
-                className="nav-link-btn"
-                onClick={() => handleNavigate("/admin?status=approved", "admin")}
-              >
-                Approved
-              </button>
-              <button
-                className="nav-link-btn"
-                onClick={() => handleNavigate("/admin?status=rejected", "admin")}
-              >
-                Rejected
-              </button>
+              <div className="nav-link-btn" style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "0 12px", cursor: "default" }}>
+                <span style={{ color: "inherit" }}>All Assets</span>
+                <select
+                  aria-label="All Assets"
+                  value={new URLSearchParams(window.location.search).get("status") || ""}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value;
+                    const query = nextStatus ? `?status=${encodeURIComponent(nextStatus)}` : "";
+                    handleNavigate(`/admin${query}`, "admin");
+                  }}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    border: "1px solid #ccc",
+                    background: "#fff",
+                    color: "#222",
+                    cursor: "pointer"
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
               <button
                 className="nav-link-btn"
                 onClick={() => handleNavigate("/admin?tab=myaccount", "admin")}
@@ -310,6 +365,18 @@ export default function AppHeader({
                 onClick={() => handleNavigate("/admin?tab=controls", "admin")}
               >
                 Controls
+              </button>
+              <button
+                className="nav-link-btn"
+                onClick={() => handleNavigate("/admin?tab=live-assets", "admin")}
+              >
+                Live Assets
+              </button>
+              <button
+                className="nav-link-btn"
+                onClick={() => handleNavigate("/admin?tab=users", "admin")}
+              >
+                Users
               </button>
             </div>
           )}

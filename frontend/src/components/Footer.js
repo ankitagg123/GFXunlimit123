@@ -1,7 +1,58 @@
-function Footer() {
-  const token = typeof window !== 'undefined' && localStorage.getItem('token');
+import { useEffect, useState } from "react";
 
-  if (token) return null;
+function Footer({ onOpenLogin, onOpenJoin, isLoggedIn = false }) {
+  const SOCIAL_LINKS_STORAGE_KEY = "footer-social-links";
+  const SOCIAL_LINKS_EVENT = "footer-social-links-changed";
+  const SOCIAL_LINK_LABELS = {
+    twitter: "Twitter",
+    instagram: "Instagram",
+    facebook: "Facebook",
+    linkedin: "LinkedIn",
+    youtube: "YouTube",
+    pinterest: "Pinterest",
+    tiktok: "TikTok",
+    snapchat: "Snapchat",
+    reddit: "Reddit",
+    telegram: "Telegram",
+    discord: "Discord",
+    github: "GitHub",
+    dribbble: "Dribbble",
+    behance: "Behance",
+    medium: "Medium",
+    mastodon: "Mastodon",
+    x: "X"
+  };
+
+  const getStoredSocialLinks = () => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem(SOCIAL_LINKS_STORAGE_KEY);
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed)
+        ? parsed.filter((item) => item?.platform && item?.url)
+        : [];
+    } catch (err) {
+      console.error("Failed to load footer social links", err);
+      return [];
+    }
+  };
+
+  const getIndianYear = () => {
+    const now = new Date();
+    const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    return istTime.getFullYear();
+  };
+
+  const [socialLinks, setSocialLinks] = useState(getStoredSocialLinks);
+  const currentYear = getIndianYear();
+
+  useEffect(() => {
+    const updateSocialLinks = () => setSocialLinks(getStoredSocialLinks());
+    updateSocialLinks();
+    window.addEventListener(SOCIAL_LINKS_EVENT, updateSocialLinks);
+    return () => window.removeEventListener(SOCIAL_LINKS_EVENT, updateSocialLinks);
+  }, []);
 
   return (
     <footer style={{ marginTop: 40, background: "#0f1724", color: "#e6eef8", padding: "36px 20px" }}>
@@ -33,8 +84,42 @@ function Footer() {
         <div>
           <h4 style={{ margin: "0 0 8px 0" }}>For You</h4>
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            <li><a href="/login" style={{ color: "#cfe8ff" }}>Login</a></li>
-            <li><a href="/register?type=contributor" style={{ color: "#cfe8ff" }}>Become a Contributor</a></li>
+            {!isLoggedIn && (
+              <>
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenLogin}
+                    style={{
+                      color: "#cfe8ff",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textDecoration: "underline"
+                    }}
+                  >
+                    Login
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => onOpenJoin("contributor")}
+                    style={{
+                      color: "#cfe8ff",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textDecoration: "underline"
+                    }}
+                  >
+                    Become a Contributor
+                  </button>
+                </li>
+              </>
+            )}
             <li><a href="/help" style={{ color: "#cfe8ff" }}>Help Center</a></li>
           </ul>
         </div>
@@ -51,11 +136,19 @@ function Footer() {
 
       <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 28, paddingTop: 18 }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ opacity: 0.9 }}>© {new Date().getFullYear()} Stock Photo Website. All rights reserved.</div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <a href="https://twitter.com" style={{ color: "#cfe8ff" }}>Twitter</a>
-            <a href="https://instagram.com" style={{ color: "#cfe8ff" }}>Instagram</a>
-            <a href="https://facebook.com" style={{ color: "#cfe8ff" }}>Facebook</a>
+          <div style={{ opacity: 0.9 }}>© {currentYear} Stock Photo Website. All rights reserved.</div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {socialLinks.map((link) => (
+              <a
+                key={`${link.platform}-${link.url}`}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#cfe8ff" }}
+              >
+                {SOCIAL_LINK_LABELS[link.platform] || link.platform}
+              </a>
+            ))}
           </div>
         </div>
       </div>

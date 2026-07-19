@@ -123,6 +123,43 @@ const upload = multer({
   }
 
 });
+
+const brandingStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const brandingDir = path.join(__dirname, "uploads", "branding");
+    fs.mkdirSync(brandingDir, { recursive: true });
+    cb(null, brandingDir);
+  },
+  filename: function (req, file, cb) {
+    const fieldName = file.fieldname === "favicon" ? "favicon" : "logo";
+    const ext = path.extname(file.originalname) || ".png";
+    cb(null, `${fieldName}${ext}`);
+  }
+});
+
+const brandingUpload = multer({
+  storage: brandingStorage,
+  limits: {
+    fileSize: 2 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Only image files are allowed for branding"));
+  }
+});
+
+const handleBrandingUpload = (req, res, next) => {
+  brandingUpload.fields([{ name: "logo", maxCount: 1 }, { name: "favicon", maxCount: 1 }])(req, res, (err) => {
+    if (err) {
+      console.error("Branding upload error", err.message || err);
+      return res.status(400).json({ error: err.message || "Branding upload failed" });
+    }
+    next();
+  });
+};
 /* ---------------- MIDDLEWARE ---------------- */
 
 app.use(
@@ -135,6 +172,56 @@ app.use(
 app.use(express.json());
 
 app.use("/uploads", express.static("uploads"));
+
+const getBrandingConfig = () => {
+  const brandingFile = path.join(__dirname, "uploads", "branding", "branding.json");
+  if (!fs.existsSync(brandingFile)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(brandingFile, "utf8"));
+  } catch (err) {
+    console.error("Failed to read branding config", err.message || err);
+    return {};
+  }
+};
+
+const saveBrandingConfig = (nextConfig) => {
+  const brandingDir = path.join(__dirname, "uploads", "branding");
+  const brandingFile = path.join(brandingDir, "branding.json");
+  fs.mkdirSync(brandingDir, { recursive: true });
+  fs.writeFileSync(brandingFile, JSON.stringify(nextConfig, null, 2));
+};
+
+app.get("/branding", async (req, res) => {
+  res.json(getBrandingConfig());
+});
+
+app.post(
+  "/admin/branding",
+  verifyAdmin,
+  handleBrandingUpload,
+  async (req, res) => {
+    try {
+      const nextConfig = { ...getBrandingConfig() };
+
+      if (req.files?.logo?.[0]) {
+        nextConfig.logo = `/uploads/branding/${req.files.logo[0].filename}`;
+      }
+
+      if (req.files?.favicon?.[0]) {
+        nextConfig.favicon = `/uploads/branding/${req.files.favicon[0].filename}`;
+      }
+
+      saveBrandingConfig(nextConfig);
+      res.json(nextConfig);
+    } catch (err) {
+      console.error("Failed to update branding", err.message || err);
+      res.status(500).json({ error: err.message || "Failed to update branding" });
+    }
+  }
+);
 
 const DEFAULT_CATEGORY_NAMES = [
   "Images",
@@ -181,6 +268,52 @@ const getCategoriesList = async () => {
   }
 };
 
+const getCollectionsList = async () => {
+  try {
+    const existing = await pool.query(`
+      SELECT id, name
+      FROM collections
+      ORDER BY name
+    `);
+
+    if (existing.rows.length > 0) {
+      return existing.rows;
+    }
+
+    const imageCollections = await pool.query(`
+      SELECT DISTINCT TRIM(collection) AS name
+      FROM images
+      WHERE TRIM(COALESCE(collection, '')) <> ''
+      ORDER BY name
+    `);
+
+    const inserted = [];
+
+    for (const collection of imageCollections.rows) {
+      if (!collection.name) continue;
+
+      const created = await pool.query(
+        `
+        INSERT INTO collections (name)
+        VALUES ($1)
+        ON CONFLICT (name) DO NOTHING
+        RETURNING id, name
+        `,
+        [collection.name]
+      );
+
+      if (created.rows[0]) {
+        inserted.push(created.rows[0]);
+      }
+    }
+
+    return inserted;
+  } catch (err) {
+    console.error("Failed to load collections", err.message || err);
+    return [];
+  }
+};
+
 // Ensure credits_history and image metadata columns exist
 (async () => {
   try {
@@ -210,17 +343,25 @@ const getCategoriesList = async () => {
         created_at TIMESTAMPTZ DEFAULT now()
       );
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS collections (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
   } catch (err) {
     console.error('Failed to ensure database schema exists:', err.message || err);
   }
 })();
 /* ---------------- ADMIN MIDDLEWARE ---------------- */
 
-const verifyAdmin = async (
+async function verifyAdmin(
   req,
   res,
   next
-) => {
+) {
 
   try {
 
@@ -302,7 +443,7 @@ const verifyAdmin = async (
 
   }
 
-};
+}
 /* ---------------- HEALTH CHECK ---------------- */
 
 app.get("/", async (req, res) => {
@@ -456,15 +597,24 @@ app.post("/login", async (req, res) => {
       );
 
     }
+
+    const normalizedStatus = String(user.rows[0].status || "").trim().toLowerCase();
+
+    if (normalizedStatus === "blocked") {
+      return res.status(403).json(
+        "Your account has been blocked. Please contact support."
+      );
+    }
+
     // Contributor approval check
-if (
-  user.rows[0].role === "contributor" &&
-  user.rows[0].status !== "active"
-) {
-  return res.status(403).json(
-    "Your contributor account is awaiting admin approval."
-  );
-}
+    if (
+      user.rows[0].role === "contributor" &&
+      normalizedStatus !== "active"
+    ) {
+      return res.status(403).json(
+        "Your contributor account is awaiting admin approval."
+      );
+    }
 
     const token = jwt.sign(
 
@@ -1472,6 +1622,7 @@ app.put(
       const {
         title,
         category,
+        collection,
         keywords,
         description,
         type
@@ -1485,16 +1636,18 @@ app.put(
           SET
             title = $1,
             category = $2,
-            keywords = $3,
-            description = $4,
-            type = $5
-          WHERE id = $6
+            collection = $3,
+            keywords = $4,
+            description = $5,
+            type = $6
+          WHERE id = $7
           RETURNING *
           `,
 
           [
             title,
             category,
+            collection,
             keywords,
             description,
             type,
@@ -1519,7 +1672,7 @@ app.put(
 
   }
 );
-const authenticateToken = (
+const authenticateToken = async (
   req,
   res,
   next
@@ -1547,8 +1700,32 @@ const authenticateToken = (
         "secretkey"
       );
 
+    const userResult = await pool.query(
+      `
+      SELECT status
+      FROM users
+      WHERE id = $1
+      `,
+      [decoded.user]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(401).json(
+        "Invalid token"
+      );
+    }
+
+    const userStatus = String(userResult.rows[0].status || "").trim().toLowerCase();
+
+    if (userStatus === "blocked") {
+      return res.status(403).json(
+        "Your account has been blocked. Please contact support."
+      );
+    }
+
     req.user = {
-      id: decoded.user
+      id: decoded.user,
+      status: userStatus
     };
 
     next();
@@ -2184,7 +2361,428 @@ app.get("/categories", async (req, res) => {
   }
 });
 
+/* ---------------- COLLECTION MANAGEMENT ---------------- */
+
+app.get("/collections", async (req, res) => {
+  try {
+    const collections = await getCollectionsList();
+    res.json(collections);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to fetch collections");
+  }
+});
+
+app.get("/admin/collections", verifyAdmin, async (req, res) => {
+  try {
+    const collections = await getCollectionsList();
+    res.json(collections);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to fetch admin collections");
+  }
+});
+
+app.post("/admin/collections", verifyAdmin, async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json("Collection name is required");
+    }
+
+    const newCollection = await pool.query(
+      `
+      INSERT INTO collections (name)
+      VALUES ($1)
+      ON CONFLICT (name) DO NOTHING
+      RETURNING *
+      `,
+      [name.trim()]
+    );
+
+    if (newCollection.rows.length === 0) {
+      return res.status(400).json("Collection already exists");
+    }
+
+    res.json(newCollection.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to add collection");
+  }
+});
+
+app.put("/admin/collections/:id", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    const normalizedName = name?.trim();
+
+    if (!normalizedName) {
+      return res.status(400).json("Collection name is required");
+    }
+
+    const existingCollection = await pool.query(
+      `
+      SELECT id, name
+      FROM collections
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (existingCollection.rows.length === 0) {
+      return res.status(404).json("Collection not found");
+    }
+
+    const updatedCollection = await pool.query(
+      `
+      UPDATE collections
+      SET name = $1
+      WHERE id = $2
+      RETURNING *
+      `,
+      [normalizedName, id]
+    );
+
+    if (updatedCollection.rows.length === 0) {
+      return res.status(404).json("Collection not found");
+    }
+
+    if (existingCollection.rows[0].name !== normalizedName) {
+      await pool.query(
+        `
+        UPDATE images
+        SET collection = $1
+        WHERE TRIM(COALESCE(collection, '')) = $2
+        `,
+        [normalizedName, existingCollection.rows[0].name]
+      );
+    }
+
+    res.json(updatedCollection.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to update collection");
+  }
+});
+
+app.delete("/admin/collections/:id", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const collectionResult = await pool.query(
+      `
+      SELECT id, name
+      FROM collections
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (collectionResult.rows.length === 0) {
+      return res.status(404).json("Collection not found");
+    }
+
+    const collection = collectionResult.rows[0];
+    const assetCheck = await pool.query(
+      `
+      SELECT id, title, filename
+      FROM images
+      WHERE TRIM(COALESCE(collection, '')) = $1
+      ORDER BY id DESC
+      LIMIT 10
+      `,
+      [collection.name]
+    );
+
+    if (assetCheck.rows.length > 0) {
+      const totalAssets = await pool.query(
+        `
+        SELECT COUNT(*)::int AS count
+        FROM images
+        WHERE TRIM(COALESCE(collection, '')) = $1
+        `,
+        [collection.name]
+      );
+
+      return res.status(409).json({
+        message: "Collection has assets assigned to it.",
+        assetCount: totalAssets.rows[0].count,
+        assets: assetCheck.rows
+      });
+    }
+
+    const deleted = await pool.query(
+      `
+      DELETE FROM collections
+      WHERE id = $1
+      RETURNING *
+      `,
+      [id]
+    );
+
+    res.json(deleted.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to delete collection");
+  }
+});
+
 /* ---------------- ADMIN CATEGORY MANAGEMENT ---------------- */
+
+app.get("/admin/users", verifyAdmin, async (req, res) => {
+  try {
+    const users = await pool.query(`
+      SELECT
+        id,
+        full_name,
+        username,
+        email,
+        role,
+        identity_number,
+        credits,
+        status,
+        created_at
+      FROM users
+      ORDER BY created_at DESC
+    `);
+
+    res.json(users.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to fetch users");
+  }
+});
+
+app.post("/admin/users", verifyAdmin, async (req, res) => {
+  try {
+    const { full_name, username, email, role, identity_number, credits, status, password } = req.body;
+
+    if (!username || !email || !role) {
+      return res.status(400).json("Username, email, and role are required");
+    }
+
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+
+    const newUserQuery = await pool.query(
+      `
+      INSERT INTO users
+      (full_name, username, email, password, role, identity_number, credits, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [
+        full_name ?? null,
+        username,
+        email,
+        hashedPassword,
+        role,
+        identity_number ?? null,
+        credits ?? null,
+        status || (role === "contributor" ? "pending" : "active")
+      ]
+    );
+
+    res.json(newUserQuery.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to create user");
+  }
+});
+
+app.put("/admin/users/:id/approve", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedUser = await pool.query(
+      `
+      UPDATE users
+      SET status = 'active'
+      WHERE id = $1
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [id]
+    );
+
+    if (updatedUser.rows.length === 0) {
+      return res.status(404).json("User not found");
+    }
+
+    res.json(updatedUser.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to approve user");
+  }
+});
+
+app.put("/admin/users/:id/reject", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedUser = await pool.query(
+      `
+      UPDATE users
+      SET status = 'rejected'
+      WHERE id = $1
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [id]
+    );
+
+    if (updatedUser.rows.length === 0) {
+      return res.status(404).json("User not found");
+    }
+
+    res.json(updatedUser.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to reject user");
+  }
+});
+
+app.put("/admin/users/:id/deactivate", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedUser = await pool.query(
+      `
+      UPDATE users
+      SET status = 'blocked'
+      WHERE id = $1
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [id]
+    );
+
+    if (updatedUser.rows.length === 0) {
+      return res.status(404).json("User not found");
+    }
+
+    res.json(updatedUser.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to deactivate user");
+  }
+});
+
+app.put("/admin/users/:id/block", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedUser = await pool.query(
+      `
+      UPDATE users
+      SET status = 'blocked'
+      WHERE id = $1
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [id]
+    );
+
+    if (updatedUser.rows.length === 0) {
+      return res.status(404).json("User not found");
+    }
+
+    res.json(updatedUser.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to block user");
+  }
+});
+
+app.put("/admin/users/:id", verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { full_name, username, email, role, identity_number, credits, status, password } = req.body;
+
+    const existingUser = await pool.query(`SELECT id FROM users WHERE id = $1`, [id]);
+    if (existingUser.rows.length === 0) {
+      return res.status(404).json("User not found");
+    }
+
+    let hashedPassword = null;
+    if (password && password.trim()) {
+      const saltRounds = 10;
+      hashedPassword = await bcrypt.hash(password.trim(), saltRounds);
+    }
+
+    const updatedUser = await pool.query(
+      `
+      UPDATE users
+      SET
+        full_name = COALESCE($1, full_name),
+        username = COALESCE($2, username),
+        email = COALESCE($3, email),
+        role = COALESCE($4, role),
+        identity_number = COALESCE($5, identity_number),
+        credits = COALESCE($6, credits),
+        status = COALESCE($7, status),
+        password = COALESCE($8, password)
+      WHERE id = $9
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [full_name ?? null, username ?? null, email ?? null, role ?? null, identity_number ?? null, credits ?? null, status ?? null, hashedPassword, id]
+    );
+
+    res.json(updatedUser.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to update user");
+  }
+});
+
+app.delete("/admin/users/:id", verifyAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+      DELETE FROM credits_history
+      WHERE user_id = $1
+      `,
+      [id]
+    );
+
+    await client.query(
+      `
+      DELETE FROM favorites
+      WHERE user_id = $1
+      `,
+      [id]
+    );
+
+    await client.query(
+      `
+      DELETE FROM downloads
+      WHERE user_id = $1
+      `,
+      [id]
+    );
+
+    const deletedUser = await client.query(
+      `
+      DELETE FROM users
+      WHERE id = $1
+      RETURNING id, full_name, username, email, role, identity_number, credits, status, created_at
+      `,
+      [id]
+    );
+
+    if (deletedUser.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json("User not found");
+    }
+
+    await client.query("COMMIT");
+    res.json(deletedUser.rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(err);
+    res.status(500).send("Failed to delete user");
+  } finally {
+    client.release();
+  }
+});
 
 app.get("/admin/categories", verifyAdmin, async (req, res) => {
   try {

@@ -52,6 +52,13 @@
   color: #202020;
 }
 
+.brand-logo-image {
+  height: 44px;
+  width: auto;
+  max-width: 220px;
+  object-fit: contain;
+}
+
 .app-header.dark .logo-dark {
   color: white;
 }

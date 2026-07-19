@@ -9,6 +9,8 @@ import {
 } from "./utils/watchConfigOptions";
 
 const CATEGORY_STORAGE_KEY = "asset-categories";
+const COLLECTION_STORAGE_KEY = "asset-collections";
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
 const DEFAULT_CATEGORY_OPTIONS = [
   { id: "default-images", name: "Images" },
   { id: "default-vector", name: "Vector/illustrations" },
@@ -22,6 +24,7 @@ function Upload({ fetchImages }) {
   const [category, setCategory] = useState([]);
   const [availableCategories, setAvailableCategories] = useState([]);
   const [collection, setCollection] = useState("");
+  const [availableCollections, setAvailableCollections] = useState([]);
   const [keywords, setKeywords] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
@@ -71,7 +74,7 @@ function Upload({ fetchImages }) {
 
       try {
         const res = await axios.get(
-          `${process.env.REACT_APP_API_BASE_URL || "http://localhost:5001"}/categories`
+          `${API_BASE_URL}/categories`
         );
         const categories = Array.isArray(res.data) && res.data.length > 0 ? res.data : fallbackCategories;
         setAvailableCategories(categories);
@@ -79,6 +82,30 @@ function Upload({ fetchImages }) {
       } catch (err) {
         console.error("Failed to load categories", err);
         setAvailableCategories(fallbackCategories);
+      }
+    };
+
+    const loadCollections = async () => {
+      try {
+        const res = await axios.get(
+          `${API_BASE_URL}/collections`
+        );
+        const collections = Array.isArray(res.data) ? res.data : [];
+        setAvailableCollections(collections);
+        localStorage.setItem(COLLECTION_STORAGE_KEY, JSON.stringify(collections));
+      } catch (err) {
+        console.error("Failed to load collections", err);
+        try {
+          const cachedCollections = localStorage.getItem(COLLECTION_STORAGE_KEY);
+          if (cachedCollections) {
+            const parsed = JSON.parse(cachedCollections);
+            if (Array.isArray(parsed)) {
+              setAvailableCollections(parsed);
+            }
+          }
+        } catch (cacheErr) {
+          console.error("Invalid cached collections", cacheErr);
+        }
       }
     };
 
@@ -118,10 +145,15 @@ function Upload({ fetchImages }) {
     };
 
     loadCategories();
+    loadCollections();
     loadWatchConfig();
 
     const handleCategoryUpdate = () => {
       loadCategories();
+    };
+
+    const handleCollectionUpdate = () => {
+      loadCollections();
     };
 
     const handleWatchConfigUpdate = (event) => {
@@ -142,12 +174,14 @@ function Upload({ fetchImages }) {
     };
 
     window.addEventListener("asset-categories-updated", handleCategoryUpdate);
+    window.addEventListener("asset-collections-updated", handleCollectionUpdate);
     window.addEventListener("asset-watch-config-updated", handleWatchConfigUpdate);
     window.addEventListener("watch-config-updated", handleWatchConfigUpdate);
     window.addEventListener("storage", handleStorageUpdate);
 
     return () => {
       window.removeEventListener("asset-categories-updated", handleCategoryUpdate);
+      window.removeEventListener("asset-collections-updated", handleCollectionUpdate);
       window.removeEventListener("asset-watch-config-updated", handleWatchConfigUpdate);
       window.removeEventListener("watch-config-updated", handleWatchConfigUpdate);
       window.removeEventListener("storage", handleStorageUpdate);
@@ -188,7 +222,7 @@ function Upload({ fetchImages }) {
 setUploadProgress(0);
 
       const res = await axios.post(
-  `${process.env.REACT_APP_API_BASE_URL || "http://localhost:5001"}/upload`,
+  `${API_BASE_URL}/upload`,
   formData,
   {
     headers: {
@@ -322,7 +356,7 @@ setUploadProgress(100);
           <div style={{ flex: "1 1 260px", minWidth: "220px" }}>
             <input
               type="text"
-              placeholder="Keywords (max 14 words, Tab to format)"
+              placeholder="Keywords (max 14 words, Press Tab key to set Auto - format)"
               value={keywords}
               onChange={handleKeywordChange}
               onKeyDown={handleKeywordKeyDown}
@@ -407,11 +441,11 @@ setUploadProgress(100);
               }}
             >
               <option value="">Select Collection</option>
-              <option value="Images">Images</option>
-              <option value="Vector/illustrations">Vector/illustrations</option>
-              <option value="PSd">PSd</option>
-              <option value="Videos">Videos</option>
-              <option value="Templates">Templates</option>
+              {availableCollections.map((collectionOption) => (
+                <option key={collectionOption.id || collectionOption.name} value={collectionOption.name}>
+                  {collectionOption.name}
+                </option>
+              ))}
             </select>
           </div>
           <div style={{ flex: 1, minWidth: "220px" }}>

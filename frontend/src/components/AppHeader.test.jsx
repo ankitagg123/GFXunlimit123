@@ -4,9 +4,11 @@ import AppHeader from './AppHeader';
 import { ToastContainer } from 'react-toastify';
 
 const mockNavigate = jest.fn();
+const mockLocation = { search: '' };
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => mockLocation,
 }), { virtual: true });
 
 jest.mock('./LoginModal', () => () => <div data-testid="login-modal" />);
@@ -17,6 +19,7 @@ describe('AppHeader customer navigation', () => {
   beforeEach(() => {
     localStorage.clear();
     mockNavigate.mockReset();
+    mockLocation.search = '';
   });
 
   it('shows customer navigation links and search bar for customer users', async () => {
@@ -66,5 +69,37 @@ describe('AppHeader customer navigation', () => {
     expect(screen.queryByRole('button', { name: /\+100 Credits/i })).toBeNull();
 
     global.fetch.mockRestore && global.fetch.mockRestore();
+  });
+
+  it('shows a single All Assets dropdown for admin users', async () => {
+    localStorage.setItem('token', 'demo-token');
+    localStorage.setItem('userRole', 'admin');
+
+    render(
+      <AppHeader
+        showNotifications={false}
+        setShowNotifications={jest.fn()}
+        notificationCount={0}
+        setNotificationCount={jest.fn()}
+        setShowLoginModal={jest.fn()}
+        setShowJoinModal={jest.fn()}
+        showLoginModal={false}
+        showJoinModal={false}
+        joinModalAccountType=""
+        setJoinModalAccountType={jest.fn()}
+        darkMode={false}
+        notifications={[]}
+        setActivePage={jest.fn()}
+        setDarkMode={jest.fn()}
+        userRole="admin"
+      />
+    );
+
+    const assetFilter = screen.getByLabelText(/all assets/i);
+    expect(assetFilter).toBeInTheDocument();
+
+    await userEvent.selectOptions(assetFilter, 'pending');
+
+    expect(mockNavigate).toHaveBeenCalledWith('/admin?status=pending');
   });
 });

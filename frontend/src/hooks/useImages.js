@@ -66,9 +66,26 @@ export default function useImages({
 
   };
   useEffect(() => {
-  fetchImages();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [currentPage]);
+    const handleAssetUpdate = () => {
+      window.setTimeout(() => {
+        fetchImages();
+      }, 250);
+    };
+
+    window.addEventListener("asset-updated", handleAssetUpdate);
+    window.addEventListener("asset-refresh", handleAssetUpdate);
+    window.addEventListener("asset-updated-detail", handleAssetUpdate);
+    window.addEventListener("home-assets-refresh", handleAssetUpdate);
+    fetchImages();
+
+    return () => {
+      window.removeEventListener("asset-updated", handleAssetUpdate);
+      window.removeEventListener("asset-refresh", handleAssetUpdate);
+      window.removeEventListener("asset-updated-detail", handleAssetUpdate);
+      window.removeEventListener("home-assets-refresh", handleAssetUpdate);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
 
   const fetchSingleImage = async (id) => {
 
