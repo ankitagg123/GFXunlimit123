@@ -1,0 +1,25 @@
+# Environment files
+frontend/.env
+backend/.env
+
+# Uploads
+backend/uploads/
+
+# React build
+frontend/build/
+
+# Node modules
+frontend/node_modules/
+backend/node_modules/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# IDE
+.vscode/
+
+# Logs
+*.log
