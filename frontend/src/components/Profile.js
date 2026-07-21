@@ -30,8 +30,6 @@ function Profile() {
           );
 
         setProfile(res.data);
-          return res.data;
-
         if (res.data.role === "admin") {
           setIsAdmin(true);
         }

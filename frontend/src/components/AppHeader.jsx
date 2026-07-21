@@ -6,7 +6,6 @@ import { toast } from "react-toastify";
 
 import LoginModal from "./LoginModal";
 import JoinModal from "./JoinModal";
-import NavigationMenu from "./dashboard/NavigationMenu";
 import NotificationsPanel from "./NotificationsPanel";
 
 export default function AppHeader({
@@ -70,7 +69,6 @@ export default function AppHeader({
   };
 
   const [showCreditsMenu, setShowCreditsMenu] = useState(false);
-  const [creditsMessage, setCreditsMessage] = useState("");
   const [branding, setBranding] = useState({});
   const creditsDropdownRef = useRef(null);
 

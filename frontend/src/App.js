@@ -1,57 +1,30 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
-import useDashboardImages from "./hooks/useDashboardImages";
-import HomePage from "./pages/HomePage";
 import FloatingAuth from "./components/FloatingAuth";
 import AppRoutes from "./components/AppRoutes";
-import useLeaderboard from "./hooks/useLeaderboard";
-import useDashboard from "./hooks/useDashboard";
-import useContributorPage from "./hooks/useContributorPage";
 import useNotifications from "./hooks/useNotifications";
-import useImageActions from "./hooks/useImageActions";
-import useTrendingKeywords from "./hooks/useTrendingKeywords";
-import useImages from "./hooks/useImages";
-import useContributorStats from "./hooks/useContributorStats";
-import useEarnings from "./hooks/useEarnings";
-import useFilteredImages from "./hooks/useFilteredImages";
-import useKeyboardNavigation from "./hooks/useKeyboardNavigation";
-import useImageNavigation from "./hooks/useImageNavigation";
-import useContributorPopup from "./hooks/useContributorPopup";
-import useContributorPageStats from "./hooks/useContributorPageStats";
-import AppHeader from "./components/AppHeader";
 import useNotificationLoader from "./hooks/useNotificationLoader";
-import useContributorNavigation from "./hooks/useContributorNavigation";
+import useProfile from "./hooks/useProfile";
+import AppHeader from "./components/AppHeader";
 import Footer from "./components/Footer";
 import useHeroStats from "./hooks/useHeroStats";
-import AnalyticsDashboard from "./components/dashboard/AnalyticsDashboard";
-import useProfile from "./hooks/useProfile";
-import useGalleryNavigation from "./hooks/useGalleryNavigation";
-import HomePageContainer from "./pages/HomePageContainer";
-import DashboardContainer from "./pages/DashboardContainer";
-import HomeSection from "./components/HomeSection";
-import FavoritesPage from "./pages/FavoritesPage";
-import DownloadsPage from "./pages/DownloadsPage";
-import UploadPage from "./pages/UploadPage";
-import ProfilePage from "./pages/ProfilePage";
-
-
-
-
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  LineChart,
-  Line
-} from "recharts";
-import { ToastContainer } from "react-toastify";
-import useMonthlyDownloads from "./hooks/useMonthlyDownloads";
+import useImageActions from "./hooks/useImageActions";
+import useContributorNavigation from "./hooks/useContributorNavigation";
+import useLeaderboard from "./hooks/useLeaderboard";
+import useImages from "./hooks/useImages";
+import useDashboard from "./hooks/useDashboard";
+import useContributorStats from "./hooks/useContributorStats";
+import useEarnings from "./hooks/useEarnings";
+import useTrendingKeywords from "./hooks/useTrendingKeywords";
+import useFilteredImages from "./hooks/useFilteredImages";
+import useDashboardImages from "./hooks/useDashboardImages";
+import useContributorPageStats from "./hooks/useContributorPageStats";
+import useContributorPopup from "./hooks/useContributorPopup";
+import useImageNavigation from "./hooks/useImageNavigation";
+import useKeyboardNavigation from "./hooks/useKeyboardNavigation";
 import "react-toastify/dist/ReactToastify.css";
+import { ToastContainer } from "react-toastify";
 import { applyTheme, getInitialDarkMode } from "./utils/theme";
 
 function App() {
@@ -84,32 +57,22 @@ useEffect(() => {
   );
 
 }, []);
-  const [monthlyDownloads, setMonthlyDownloads] = useState([]);
-  useMonthlyDownloads(setMonthlyDownloads);
-  
-  const [activePage, setActivePage] =
-useState("home");
+  const [activePage, setActivePage] = useState("home");
 window.setActivePage = setActivePage;
 /* =========================================
    NOTIFICATIONS
 ========================================= */
-  const [notifications, setNotifications] =
-  useState([]);
-  const [notificationCount, setNotificationCount] =
-  useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const {
   notifySuccess,
   notifyError,
-  clearAllNotifications,
 } = useNotifications(
   setNotifications,
   setNotificationCount
 );
 
-const [showNotifications, setShowNotifications] =
-  useState(false);
-  const [totalLikes, setTotalLikes] =
-  useState(0);
+const [showNotifications, setShowNotifications] = useState(false);
 
   /* =========================================
    AUTHENTICATION
@@ -118,11 +81,7 @@ const [showNotifications, setShowNotifications] =
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [joinModalAccountType, setJoinModalAccountType] = useState("");
 
-const [totalDownloads, setTotalDownloads] =
-  useState(0);
 
-const [totalViews, setTotalViews] =
-  useState(0);
   /* =========================================
    GALLERY
 ========================================= */
@@ -161,8 +120,6 @@ const [totalViews, setTotalViews] =
   useState(null);
   const {
   viewContributorPage,
-  setViewContributorPage,
-  testSetContributor,
 } = useContributorNavigation();
     const [relatedImages, setRelatedImages] =
   useState([]);
@@ -175,18 +132,15 @@ const [totalViews, setTotalViews] =
     applyTheme(darkMode);
   }, [darkMode]);
 
-  const [sortType, setSortType] =
-    useState("newest");
+  const [sortType, setSortType] = useState("newest");
 
-  const [loading, setLoading] =
-    useState(true);
-    const [currentPage, setCurrentPage] =
-  useState(1);
-  const [totalPages, setTotalPages] =
-  useState(1);
-  // NOW call the hook
-  const [totalImages, setTotalImages] =
-  useState(0);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalImages, setTotalImages] = useState(0);
+  const [totalLikes, setTotalLikes] = useState(0);
+  const [totalDownloads, setTotalDownloads] = useState(0);
+  const [totalViews, setTotalViews] = useState(0);
 
 const imagesPerPage = 12;
 useLeaderboard(
@@ -216,7 +170,6 @@ const {
 ========================================= */
   const {
   dashboardStats,
-  fetchDashboardStats,
 } = useDashboard();
   const [earningsStats, setEarningsStats] =
   useState({
@@ -243,32 +196,6 @@ const {
 );
 
 const nextLevelXP = 100;
-const earningsChartData = [
-  {
-    month: "Jan",
-    earnings: 20,
-  },
-  {
-    month: "Feb",
-    earnings: 35,
-  },
-  {
-    month: "Mar",
-    earnings: 50,
-  },
-  {
-    month: "Apr",
-    earnings: 80,
-  },
-  {
-    month: "May",
-    earnings: 120,
-  },
-  {
-    month: "Jun",
-    earnings: 180,
-  },
-];
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -378,9 +305,7 @@ const filteredImages = useFilteredImages({
 });
 const {
   featuredImages,
-  trendingImages,
   topImage,
-  topFiveImages,
 } = useDashboardImages(images);
 
   const [serverTrendingImages, setServerTrendingImages] = useState([]);
@@ -414,7 +339,6 @@ const {
   nextLevel,
   progress,
   targetDownloads,
-  contributorLeaderboard,
 } = useContributorPageStats(
   images,
   viewContributorPage

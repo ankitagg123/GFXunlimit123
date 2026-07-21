@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
 import Pagination from "./Pagination";
-import { DEFAULT_WATCH_CONFIG } from "../utils/watchConfigOptions";
+import EmailActionButton from "./EmailActionButton";
+import AdminEmailSettings from "../pages/AdminEmailSettings";
+import AdminEmailTemplates from "../pages/AdminEmailTemplates";
+import AdminEmailLogs from "../pages/AdminEmailLogs";
+import AdminEmailQueue from "../pages/AdminEmailQueue";
+import AdminNewsletter from "../pages/AdminNewsletter";
+import AdminNotificationRules from "../pages/AdminNotificationRules";
+import AdminEmailAnalytics from "../pages/AdminEmailAnalytics";
+import AdminEmailScheduled from "../pages/AdminEmailScheduled";
 import { limitWords, formatKeywords } from "../utils/uploadInputLimits";
 
 const CATEGORY_STORAGE_KEY = "asset-categories";
@@ -15,6 +23,7 @@ const DEFAULT_CATEGORY_OPTIONS = [
   { id: "default-videos", name: "Videos" },
   { id: "default-templates", name: "Templates" }
 ];
+
 function AdminPanel() {
   const location = useLocation();
   const statusParam = new URLSearchParams(location.search).get("status") || "pending";
@@ -28,10 +37,6 @@ function AdminPanel() {
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryError, setNewCategoryError] = useState("");
   const [newCollection, setNewCollection] = useState("");
-  const [editingCollectionId, setEditingCollectionId] = useState(null);
-  const [editingCollectionName, setEditingCollectionName] = useState("");
-  const [editingCategoryId, setEditingCategoryId] = useState(null);
-  const [editingCategoryName, setEditingCategoryName] = useState("");
   const [deleteWarning, setDeleteWarning] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -137,6 +142,20 @@ function AdminPanel() {
   };
   const [socialLinks, setSocialLinks] = useState(getStoredSocialLinks);
   const [socialLinksMessage, setSocialLinksMessage] = useState("");
+
+  const [emailModal, setEmailModal] = useState(null);
+  const EMAIL_MODAL_TITLES = {
+    settings: 'Email Configuration',
+    templates: 'Email Templates',
+    rules: 'Notification Rules',
+    newsletter: 'Newsletter Manager',
+    queue: 'Email Queue',
+    logs: 'Email Logs',
+    analytics: 'Email Analytics',
+    scheduled: 'Scheduled Emails'
+  };
+
+  // Test function removed — Email card remains local-only
 
   const persistSocialLinks = (nextLinks) => {
     if (typeof window !== "undefined") {
@@ -634,75 +653,13 @@ function AdminPanel() {
   };
 
   const startEditingCollection = (collectionItem) => {
-    setEditingCollectionId(collectionItem.id);
-    setEditingCollectionName(collectionItem.name || "");
-  };
-
-  const saveCollectionName = async (id) => {
-    const trimmedName = editingCollectionName.trim();
-    if (!trimmedName) return;
-
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.put(
-        `${API_BASE_URL}/admin/collections/${id}`,
-        { name: trimmedName },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-      setCollections((prev) => {
-        const nextCollections = prev.map((collectionItem) => (collectionItem.id === id ? res.data : collectionItem));
-        persistCollections(nextCollections);
-        return nextCollections;
-      });
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("asset-collections-updated"));
-        window.dispatchEvent(new Event("asset-refresh"));
-        window.dispatchEvent(new Event("asset-updated"));
-        window.dispatchEvent(new Event("home-assets-refresh"));
-      }
-      if (tabParam === "live-assets") {
-        await fetchApprovedImages();
-      }
-      setEditingCollectionId(null);
-      setEditingCollectionName("");
-    } catch (err) {
-      console.error(err);
-    }
+    setEditingCollectionInModal(collectionItem.id);
+    setEditingCollectionNameInModal(collectionItem.name || "");
   };
 
   const startEditingCategory = (categoryItem) => {
-    setEditingCategoryId(categoryItem.id);
-    setEditingCategoryName(categoryItem.name || "");
-  };
-
-  const saveCategoryName = async (id) => {
-    const trimmedName = editingCategoryName.trim();
-    if (!trimmedName) return;
-
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.put(
-        `${API_BASE_URL}/admin/categories/${id}`,
-        { name: trimmedName },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-      setCategories((prev) => {
-        const nextCategories = prev.map((categoryItem) => (categoryItem.id === id ? res.data : categoryItem));
-        persistCategories(nextCategories);
-        return nextCategories;
-      });
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("asset-categories-updated"));
-      }
-      setEditingCategoryId(null);
-      setEditingCategoryName("");
-    } catch (err) {
-      console.error(err);
-    }
+    setEditingCategoryInModal(categoryItem.id);
+    setEditingCategoryNameInModal(categoryItem.name || "");
   };
 
   const pageSize = 20;
@@ -1735,6 +1692,65 @@ function AdminPanel() {
             </button>
             {socialLinksMessage ? <div style={{ marginTop: "8px", color: "#2e7d32", fontSize: "0.9rem" }}>{socialLinksMessage}</div> : null}
           </div>
+
+          <div
+            style={{
+              padding: "22px",
+              borderRadius: "16px",
+              border: "1px solid #dde3ea",
+              background: "#fbfdff",
+              boxShadow: "0 14px 45px rgba(15, 23, 42, 0.08)",
+              borderLeft: "5px solid #1976d2"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+              <span style={{ fontSize: "1.35rem" }}>📧</span>
+              <div>
+                <h3 style={{ margin: 0 }}>Email Management</h3>
+                <div style={{ color: "#55606f", fontSize: "0.92rem", lineHeight: 1.4 }}>Quick access to email settings, templates, alerts, queue, and analytics.</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: "14px", marginTop: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+                <EmailActionButton icon="⚙️" label="Email Configuration" color="#ED2224" onClick={() => setEmailModal('settings')} />
+                <EmailActionButton icon="📄" label="Email Templates" color="#1976d2" onClick={() => setEmailModal('templates')} />
+                <EmailActionButton icon="🔔" label="Notification Rules" color="#43a047" onClick={() => setEmailModal('rules')} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+                <EmailActionButton icon="📰" label="Newsletter Manager" color="#f57c00" onClick={() => setEmailModal('newsletter')} />
+                <EmailActionButton icon="📬" label="Email Queue" color="#757575" onClick={() => setEmailModal('queue')} />
+                <EmailActionButton icon="🧾" label="Email Logs" color="#9c27b0" onClick={() => setEmailModal('logs')} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+                <EmailActionButton icon="⏰" label="Scheduled Emails" color="#00695c" onClick={() => setEmailModal('scheduled')} />
+                <EmailActionButton icon="📩" label="Test Email" color="#0288d1" onClick={() => setEmailModal('settings')} />
+                <EmailActionButton icon="📊" label="Email Analytics" color="#d84315" onClick={() => setEmailModal('analytics')} />
+              </div>
+            </div>
+          </div>
+
+            {emailModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300 }}>
+                <div style={{ width: '95%', maxWidth: 1000, background: 'white', borderRadius: 14, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottom: '1px solid #eee' }}>
+                    <h3 style={{ margin: 0 }}>{EMAIL_MODAL_TITLES[emailModal] || (emailModal ? emailModal.charAt(0).toUpperCase() + emailModal.slice(1) : '')}</h3>
+                    <button onClick={() => setEmailModal(null)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: 8 }}>✕</button>
+                  </div>
+                  <div style={{ padding: 14, maxHeight: '80vh', overflow: 'auto' }}>
+                    {emailModal === 'settings' && <AdminEmailSettings />}
+                    {emailModal === 'templates' && <AdminEmailTemplates />}
+                    {emailModal === 'logs' && <AdminEmailLogs />}
+                    {emailModal === 'queue' && <AdminEmailQueue />}
+                    {emailModal === 'newsletter' && <AdminNewsletter />}
+                    {emailModal === 'rules' && <AdminNotificationRules />}
+                    {emailModal === 'analytics' && <AdminEmailAnalytics />}
+                    {emailModal === 'scheduled' && <AdminEmailScheduled />}
+                  </div>
+                </div>
+              </div>
+            )}
 
           {/* Category Modal */}
           {viewingCategoryId && (

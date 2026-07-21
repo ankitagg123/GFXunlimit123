@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios");
 
 const app = express();
 
@@ -173,6 +174,29 @@ app.use(express.json());
 
 app.use("/uploads", express.static("uploads"));
 
+// Scheduled emails runner (checks DB every minute)
+try {
+  const cron = require('node-cron');
+  const { enqueueEmail } = require('./email/queue');
+  cron.schedule('* * * * *', async () => {
+    try {
+      const due = await pool.query("SELECT * FROM scheduled_emails WHERE active = true AND (next_run IS NULL OR next_run <= now())");
+      for (const row of due.rows) {
+        // payload expected to contain to/subject/templateBody/templateData or custom
+        const payload = row.payload || {};
+        await enqueueEmail('scheduled', payload);
+        // update next_run: if cron_expression present, leave for manual reschedule; set next_run to now + 1 day as fallback
+        const next = row.cron_expression ? null : new Date(Date.now() + 24 * 3600 * 1000);
+        await pool.query('UPDATE scheduled_emails SET next_run = $1 WHERE id = $2', [next, row.id]);
+      }
+    } catch (err) {
+      console.error('Scheduled email runner error', err);
+    }
+  });
+} catch (err) {
+  console.warn('Cron setup skipped', err.message || err);
+}
+
 const getBrandingConfig = () => {
   const brandingFile = path.join(__dirname, "uploads", "branding", "branding.json");
   if (!fs.existsSync(brandingFile)) {
@@ -222,6 +246,55 @@ app.post(
     }
   }
 );
+
+  // WhatsApp settings persisted server-side (non-sensitive fields)
+  const getWhatsappSettings = () => {
+    try {
+      const dir = path.join(__dirname, 'uploads', 'whatsapp');
+      const file = path.join(dir, 'settings.json');
+      if (!fs.existsSync(file)) return {};
+      return JSON.parse(fs.readFileSync(file, 'utf8')) || {};
+    } catch (err) {
+      console.error('Failed to read whatsapp settings', err);
+      return {};
+    }
+  };
+
+  const saveWhatsappSettings = (next) => {
+    try {
+      const dir = path.join(__dirname, 'uploads', 'whatsapp');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, 'settings.json');
+      fs.writeFileSync(file, JSON.stringify(next, null, 2));
+      return true;
+    } catch (err) {
+      console.error('Failed to save whatsapp settings', err);
+      return false;
+    }
+  };
+
+  app.get('/admin/whatsapp/settings', verifyAdmin, async (req, res) => {
+    const settings = getWhatsappSettings();
+    res.json(settings);
+  });
+
+  app.post('/admin/whatsapp/settings', verifyAdmin, async (req, res) => {
+    try {
+      const { enabled, greeting, away, businessHours } = req.body || {};
+      const next = {
+        enabled: !!enabled,
+        greeting: greeting || '',
+        away: away || '',
+        businessHours: businessHours || ''
+      };
+      const ok = saveWhatsappSettings(next);
+      if (!ok) return res.status(500).json({ error: 'Failed to save settings' });
+      res.json(next);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
 
 const DEFAULT_CATEGORY_NAMES = [
   "Images",
@@ -351,6 +424,147 @@ const getCollectionsList = async () => {
         created_at TIMESTAMPTZ DEFAULT now()
       );
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_settings (
+        id SERIAL PRIMARY KEY,
+        sender_name TEXT,
+        sender_email TEXT,
+        reply_to TEXT,
+        provider TEXT,
+        smtp_host TEXT,
+        smtp_port INTEGER,
+        smtp_user TEXT,
+        smtp_pass TEXT,
+        smtp_secure BOOLEAN DEFAULT FALSE,
+        imap_host TEXT,
+        imap_port INTEGER,
+        imap_user TEXT,
+        imap_pass TEXT,
+        imap_secure BOOLEAN DEFAULT FALSE,
+        auth_required BOOLEAN DEFAULT TRUE,
+        connection_timeout INTEGER DEFAULT 10000,
+        daily_limit INTEGER DEFAULT 1000,
+        max_per_minute INTEGER DEFAULT 60,
+        enable_queue BOOLEAN DEFAULT TRUE,
+        enable_logging BOOLEAN DEFAULT TRUE,
+        enable_retry BOOLEAN DEFAULT TRUE,
+        retry_attempts INTEGER DEFAULT 3,
+        retry_delay INTEGER DEFAULT 60000,
+        enable_bounce_handling BOOLEAN DEFAULT FALSE,
+        enable_tracking_pixel BOOLEAN DEFAULT FALSE,
+        enable_click_tracking BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      ALTER TABLE email_settings ADD COLUMN IF NOT EXISTS imap_host TEXT;
+    `);
+    await pool.query(`
+      ALTER TABLE email_settings ADD COLUMN IF NOT EXISTS imap_port INTEGER;
+    `);
+    await pool.query(`
+      ALTER TABLE email_settings ADD COLUMN IF NOT EXISTS imap_user TEXT;
+    `);
+    await pool.query(`
+      ALTER TABLE email_settings ADD COLUMN IF NOT EXISTS imap_pass TEXT;
+    `);
+    await pool.query(`
+      ALTER TABLE email_settings ADD COLUMN IF NOT EXISTS imap_secure BOOLEAN DEFAULT FALSE;
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        subject TEXT,
+        body TEXT,
+        variables TEXT[],
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id SERIAL PRIMARY KEY,
+        recipient TEXT NOT NULL,
+        template_id INTEGER REFERENCES email_templates(id),
+        subject TEXT,
+        body TEXT,
+        status TEXT,
+        error_message TEXT,
+        retries INTEGER DEFAULT 0,
+        delivered_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_queue (
+        id SERIAL PRIMARY KEY,
+        job_id TEXT,
+        payload JSONB,
+        status TEXT DEFAULT 'queued',
+        attempts INTEGER DEFAULT 0,
+        last_error TEXT,
+        scheduled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT,
+        segments TEXT[],
+        subscribed BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS newsletter_campaigns (
+        id SERIAL PRIMARY KEY,
+        title TEXT,
+        subject TEXT,
+        body TEXT,
+        sender_name TEXT,
+        sender_email TEXT,
+        status TEXT DEFAULT 'draft',
+        scheduled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notification_rules (
+        id SERIAL PRIMARY KEY,
+        event_key TEXT UNIQUE NOT NULL,
+        enable_email BOOLEAN DEFAULT TRUE,
+        enable_internal BOOLEAN DEFAULT TRUE,
+        enable_dashboard BOOLEAN DEFAULT TRUE,
+        recipients TEXT[],
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS scheduled_emails (
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+        payload JSONB,
+        cron_expression TEXT,
+        next_run TIMESTAMPTZ,
+        active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `);
+    
   } catch (err) {
     console.error('Failed to ensure database schema exists:', err.message || err);
   }
@@ -3945,3 +4159,11 @@ app.listen(PORT, "127.0.0.1", () => {
   );
 
 });
+
+// Mount email admin routes (settings, templates, verify, send-test)
+try {
+  const emailRoutes = require('./email/routes');
+  app.use('/admin/email', emailRoutes);
+} catch (err) {
+  console.error('Failed to mount email routes', err);
+}

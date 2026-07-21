@@ -8,6 +8,13 @@ import UploadPage from "./pages/UploadPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProfilePage from "./pages/ProfilePage";
 import CompanyPage from "./components/CompanyPage";
+import AdminEmailSettings from "./pages/AdminEmailSettings";
+import AdminEmailTemplates from "./pages/AdminEmailTemplates";
+import AdminEmailLogs from "./pages/AdminEmailLogs";
+import AdminEmailQueue from "./pages/AdminEmailQueue";
+import AdminNewsletter from "./pages/AdminNewsletter";
+import AdminNotificationRules from "./pages/AdminNotificationRules";
+import AdminEmailAnalytics from "./pages/AdminEmailAnalytics";
 
 export default function AppRouter(props) {
   return (
@@ -126,6 +133,14 @@ export default function AppRouter(props) {
       <Route path="/pricing" element={<CompanyPage slug="pricing" />} />
       <Route path="/careers" element={<CompanyPage slug="careers" />} />
       <Route path="/contact" element={<CompanyPage slug="contact" />} />
+      <Route path="/admin/email" element={<AdminEmailSettings />} />
+      <Route path="/admin/email/templates" element={<AdminEmailTemplates />} />
+      <Route path="/admin/email/logs" element={<AdminEmailLogs />} />
+      <Route path="/admin/email/queue" element={<AdminEmailQueue />} />
+      <Route path="/admin/newsletter" element={<AdminNewsletter />} />
+      <Route path="/admin/notification-rules" element={<AdminNotificationRules />} />
+      <Route path="/admin/email/analytics" element={<AdminEmailAnalytics />} />
+      <Route path="/admin/email/scheduled" element={<AdminEmailScheduled />} />
     </Routes>
   );
 }

@@ -64,10 +64,10 @@ const addFavorite = async (imageId) => {
       localStorage.getItem("token");
       
 
-    const res = await addFavoriteRequest(
-  imageId,
-  token
-);
+    await addFavoriteRequest(
+      imageId,
+      token
+    );
 
 
 
